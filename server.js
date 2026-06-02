@@ -2,16 +2,9 @@ import express from 'express'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
+import { initDB, getAllContacts, saveContacts } from './db.js'
 
 dotenv.config()
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(__dirname, 'data')
-const CONTACTS_FILE = join(DATA_DIR, 'contacts.json')
-mkdirSync(DATA_DIR, { recursive: true })
 
 const app = express()
 app.use(cors())
@@ -113,22 +106,23 @@ function extractJSON(text) {
   throw new Error('Could not parse AI response as JSON')
 }
 
-// ── Contacts storage endpoints ───────────────────────────────────────────────
-app.get('/api/contacts', (req, res) => {
+// Contacts storage endpoints
+app.get('/api/contacts', async (req, res) => {
   try {
-    if (!existsSync(CONTACTS_FILE)) return res.json({ success: true, contacts: [] })
-    const contacts = JSON.parse(readFileSync(CONTACTS_FILE, 'utf8'))
+    const contacts = await getAllContacts()
     res.json({ success: true, contacts })
-  } catch {
-    res.json({ success: true, contacts: [] })
+  } catch (err) {
+    console.error('GET /api/contacts error:', err.message)
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-app.put('/api/contacts', (req, res) => {
+app.put('/api/contacts', async (req, res) => {
   try {
-    writeFileSync(CONTACTS_FILE, JSON.stringify(req.body.contacts || [], null, 2))
+    await saveContacts(req.body.contacts || [])
     res.json({ success: true })
   } catch (err) {
+    console.error('PUT /api/contacts error:', err.message)
     res.status(500).json({ success: false, error: err.message })
   }
 })
@@ -319,4 +313,12 @@ Return JSON only:
 })
 
 const PORT = process.env.PORT || 3001
-app.listen(PORT, () => console.log(`\n🚀 AI server running on http://localhost:${PORT}\n`))
+
+initDB()
+  .then(() => {
+    app.listen(PORT, () => console.log(`\nServer running on http://localhost:${PORT}\n`))
+  })
+  .catch(err => {
+    console.error('Failed to connect to database:', err.message)
+    process.exit(1)
+  })

@@ -45,7 +45,7 @@ All contacts in one view, sorted by urgency — Follow Up Due contacts always ap
 | Backend | Node.js, Express |
 | AI | Google Gemini 2.5 Flash (`@google/generative-ai`) |
 | State management | React Context API |
-| Data persistence | Server-side JSON file via Express REST API |
+| Database | PostgreSQL with JSONB column (`pg` driver) |
 | Styling | Plain CSS with CSS custom properties |
 
 ---
@@ -101,12 +101,30 @@ npm install
 cp .env.example .env
 ```
 
-Open `.env` and add your key:
+Open `.env` and fill in your values:
 
 ```env
-GEMINI_API_KEY=your_key_here
+GEMINI_API_KEY=your_gemini_key_here
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/networking_agent
 PORT=3001
 ```
+
+### Set up PostgreSQL
+
+**Option A - Local PostgreSQL:**
+1. Install PostgreSQL from https://postgresql.org/download
+2. Open psql and run:
+   ```sql
+   CREATE DATABASE networking_agent;
+   ```
+3. Use `postgresql://postgres:yourpassword@localhost:5432/networking_agent` as your `DATABASE_URL`
+
+**Option B - Free cloud PostgreSQL (no install needed):**
+1. Go to https://neon.tech and create a free account
+2. Create a new project
+3. Copy the connection string it gives you into `DATABASE_URL`
+
+The app creates the `contacts` table automatically on first run. No manual SQL needed.
 
 ### Run
 
@@ -118,7 +136,7 @@ This starts both servers at once:
 - **Frontend** → `http://localhost:5173`
 - **Backend** → `http://localhost:3001`
 
-> The `predev` script automatically kills any stale process on port 3001 before starting, so you will never get a port conflict.
+The `predev` script automatically kills any stale process on port 3001 before starting, so you will never get a port conflict.
 
 ---
 
@@ -133,8 +151,8 @@ Vite Dev Server :5173
     │  proxied to
     ▼
 Express Server :3001
-    ├── GET  /api/contacts   → load from data/contacts.json
-    ├── PUT  /api/contacts   → save to data/contacts.json
+    ├── GET  /api/contacts   → SELECT from PostgreSQL
+    ├── PUT  /api/contacts   → UPSERT + DELETE into PostgreSQL
     └── POST /api/suggest    → forward prompt to Gemini, return result
                 │
                 ▼
@@ -158,7 +176,7 @@ Never commit `.env`. It is listed in `.gitignore`. Use `.env.example` as the tem
 
 ## Planned Improvements
 
-- [ ] PostgreSQL database — replace JSON file for proper cloud deployment
+- [x] PostgreSQL database
 - [ ] Deploy to Railway (backend + DB) and Vercel (frontend)
 - [ ] User authentication with JWT
 - [ ] Dockerfile + docker-compose
@@ -176,6 +194,7 @@ Never commit `.env`. It is listed in `.gitignore`. Use `.env.example` as the tem
 | REST API design | GET/PUT/POST endpoints, HTTP status codes |
 | React patterns | Context API, custom hooks, component composition |
 | State management | Centralised store with auto-save and server sync |
+| Relational database | PostgreSQL with JSONB, transactions, upsert |
 | Secrets management | `.env`, `.gitignore`, `.env.example` pattern |
 | Developer tooling | Vite, dev proxy, pre-scripts, hot reload |
 | Data persistence | Server-side storage decoupled from browser |
