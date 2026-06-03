@@ -136,6 +136,12 @@ async function callGemini(prompt) {
   return result.response.text()
 }
 
+async function callGeminiPlainText(prompt) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const result = await model.generateContent(prompt)
+  return result.response.text()
+}
+
 app.post('/api/suggest', async (req, res) => {
   try {
     const { type, contact, context } = req.body
@@ -266,13 +272,10 @@ RESPONSE RULES:
 5. Reference the actual content of their conversation when relevant — show you read it
 6. DO NOT start with "Great question!", "Absolutely!", "Of course!", or any affirmation filler
 7. Under 200 words unless the question genuinely needs more
-8. End with one concrete next step or recommendation
+8. End with one concrete next step or recommendation`
 
-Write in plain conversational text. No JSON, no markdown headers, no ** bold **.`
-
-      const coachRaw = await callGemini(prompt)
-      const message = coachRaw.replace(/^```[\s\S]*?```$/gm, '').trim()
-      return res.json({ success: true, data: { message } })
+      const message = await callGeminiPlainText(prompt)
+      return res.json({ success: true, data: { message: message.trim() } })
 
     } else if (type === 'first-message') {
       prompt = `Write the first outreach message to a new contact.
