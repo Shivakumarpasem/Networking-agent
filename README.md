@@ -40,16 +40,16 @@ All contacts in one view, sorted by urgency — Follow Up Due contacts always ap
 ## Screenshots
 
 **Dashboard - all contacts sorted by urgency**
-![Dashboard](screenshots/Demo_1.png)
+![Dashboard](Screenshots/Demo_1.png)
 
 **Individual contact chat with AI Coach side by side**
-![Contact Chat](screenshots/SP_1.png)
+![Contact Chat](Screenshots/SP_1.png)
 
 **AI Coach giving direct advice and writing the exact message**
-![AI Coach](screenshots/SP_2.png)
+![AI Coach](Screenshots/SP_2.png)
 
 **LinkedIn Note Generator**
-![Note Generator](screenshots/NG.png)
+![Note Generator](Screenshots/NG.png)
 
 ---
 
