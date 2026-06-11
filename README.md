@@ -32,8 +32,16 @@ Paste a person's LinkedIn headline, job title, company, and your reason for reac
 - Engineer/manager: opens a conversation without making an immediate ask
 - Uses the person's name and references your specific reason
 
-### 4. Dashboard
-All contacts in one view, sorted by urgency — Follow Up Due contacts always appear first so you never miss a follow-up.
+### 4. Smart Follow-up Triage (Dashboard)
+When a contact has gone 7 days without a reply, the app automatically asks Gemini whether one more follow-up is worth sending:
+- **Worth it** → a fully drafted message appears as a card on the Dashboard, ready to send
+- **Not worth it** → the contact is auto-closed with an explanation logged in the thread
+- Every draft sits in an **editable textarea** so you can tweak it before marking sent
+- **Thumbs up / down** on every draft — 👎 stores the rejected version and immediately regenerates a noticeably different draft; over time the model learns what you don't like
+- The edited version you actually send feeds future drafts, so suggestions improve as your real messages accumulate
+
+### 5. Dashboard
+All contacts in one view, sorted by urgency. Follow Up Due contacts always appear first with their AI-drafted follow-up ready to edit and send — no need to open the chat.
 
 ---
 
@@ -70,7 +78,8 @@ All contacts in one view, sorted by urgency — Follow Up Due contacts always ap
 
 ```
 networking-agent/
-├── server.js              # Express backend — AI proxy + contacts storage
+├── server.js              # Express backend — AI proxy, contacts storage, all Gemini calls
+├── db.js                  # PostgreSQL connection pool, initDB, getAllContacts, saveContacts
 ├── vite.config.js         # Vite config — proxies /api to Express in dev
 ├── .env                   # Your secrets (never committed — see .env.example)
 ├── .env.example           # Template showing required environment variables
@@ -81,16 +90,18 @@ networking-agent/
     ├── App.jsx
     ├── index.css
     ├── context/
-    │   └── AppContext.jsx      # Global state, contacts CRUD, auto-save to server
+    │   └── AppContext.jsx      # Global state, contacts CRUD, auto-save, follow-up triage
     ├── services/
     │   └── ai.js               # All AI API calls (fetch wrappers over /api/suggest)
+    ├── utils/
+    │   └── messages.js         # formatHistory (date-aware), countUnanswered, daysSince
     ├── components/
-    │   ├── ContactChat.jsx     # Chat thread + AI Coach panel + first-message card
+    │   ├── ContactChat.jsx     # Chat thread + AI Coach panel + first-message card + thumbs
     │   ├── AddContactModal.jsx
     │   ├── StatusBadge.jsx
     │   └── Sidebar.jsx
     └── pages/
-        ├── Dashboard.jsx
+        ├── Dashboard.jsx       # Follow-up triage cards with editable drafts + thumbs
         ├── Contacts.jsx
         └── NoteGenerator.jsx
 ```
@@ -167,9 +178,14 @@ Vite Dev Server :5173
     │  proxied to
     ▼
 Express Server :3001
-    ├── GET  /api/contacts   → SELECT from PostgreSQL
-    ├── PUT  /api/contacts   → UPSERT + DELETE into PostgreSQL
-    └── POST /api/suggest    → forward prompt to Gemini, return result
+    ├── GET  /api/contacts        → SELECT from PostgreSQL
+    ├── PUT  /api/contacts        → UPSERT + DELETE into PostgreSQL
+    └── POST /api/suggest         → forward prompt to Gemini, return result
+         ├── coach-chat           → plain text advice with full conversation context
+         ├── first-message        → write opening outreach message
+         ├── follow-up-triage     → decide: draft one more follow-up or close the contact
+         ├── after-sent / after-reply / no-reply / manual-suggest
+         └── note-generator       → LinkedIn connection note under 300 chars
                 │
                 ▼
         Google Gemini 2.5 Flash
@@ -193,6 +209,11 @@ Never commit `.env`. It is listed in `.gitignore`. Use `.env.example` as the tem
 ## Planned Improvements
 
 - [x] PostgreSQL database
+- [x] Auto follow-up triage with AI-drafted messages
+- [x] Editable drafts before sending
+- [x] Thumbs up/down feedback loop — model learns what you don't like
+- [x] Date-aware AI coach (no more "you sent this today" when it was days ago)
+- [ ] Multi-profile support (different personas per contact)
 - [ ] Deploy to Railway (backend + DB) and Vercel (frontend)
 - [ ] User authentication with JWT
 - [ ] Dockerfile + docker-compose
@@ -207,6 +228,9 @@ Never commit `.env`. It is listed in `.gitignore`. Use `.env.example` as the tem
 |---------|---------------|
 | Full-stack architecture | React SPA + Express REST API |
 | AI / LLM integration | Gemini API with prompt engineering, JSON parsing, error handling |
+| Agentic AI loop | Auto-triage effect: AI decides follow-up vs. close, drafts message, stores result |
+| Feedback loop | Thumbs up/down stored as positive/negative examples, fed back into future prompts |
+| Date-aware prompting | Conversation history includes timestamps so AI never misreads recency |
 | REST API design | GET/PUT/POST endpoints, HTTP status codes |
 | React patterns | Context API, custom hooks, component composition |
 | State management | Centralised store with auto-save and server sync |
