@@ -27,6 +27,8 @@ Core principles:
 6. Tell the user when to stop. After 2 unanswered follow-ups, advise stopping.
 7. Always include timing: when to send, how long to wait for a reply.
 8. Be honest if the situation looks bad. No false hope.
+9. FORMATTING: Never use em dashes or en dashes anywhere. Use a regular hyphen, comma, or period instead. Messages must be professionally formatted: a greeting line, short paragraphs with a blank line between them, and a natural closing.
+10. When "MY WRITING STYLE" examples are provided, write new messages in that same voice: same formality, similar sentence length, same sign-off style. The message should sound like the user wrote it, not an AI.
 
 Always respond with valid JSON only. No markdown code blocks, no explanation outside the JSON object.`
 
@@ -35,6 +37,41 @@ const REL = {
   engineer: 'software engineer or technical peer',
   hiring_manager: 'hiring manager (direct decision-maker for a role)',
   other: 'professional contact',
+}
+
+// Style context for message drafting, both directions:
+// - samples: the user's most recent real sent messages (write like this)
+// - rejected: AI drafts the user gave a thumbs down (do not write like this)
+async function getStyleContext() {
+  try {
+    const contacts = await getAllContacts()
+    const byNewest = (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    const samples = contacts
+      .flatMap(c => (c.messages || []).filter(m => m.type === 'sent'))
+      .sort(byNewest)
+      .slice(0, 4)
+      .map(m => (m.content.length > 400 ? m.content.slice(0, 400) + '...' : m.content))
+    const rejected = contacts
+      .flatMap(c => (c.suggestionFeedback || []).filter(f => f.rating === 'down'))
+      .sort(byNewest)
+      .slice(0, 3)
+      .map(f => (f.message.length > 300 ? f.message.slice(0, 300) + '...' : f.message))
+    return { samples, rejected }
+  } catch {
+    return { samples: [], rejected: [] }
+  }
+}
+
+// Hard guarantee: no em/en dashes in anything shown to the user, even if the
+// model ignores the prompt rule. Recursively scrubs all string fields.
+function stripEmDashes(value) {
+  if (typeof value === 'string') return value.replace(/\s*[—–―]\s*/g, ' - ')
+  if (Array.isArray(value)) return value.map(stripEmDashes)
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) value[key] = stripEmDashes(value[key])
+    return value
+  }
+  return value
 }
 
 // Sanitize control characters (newlines, tabs, etc.) inside JSON string values
@@ -146,9 +183,26 @@ app.post('/api/suggest', async (req, res) => {
   try {
     const { type, contact, context } = req.body
     const relDesc = REL[contact.relationshipType] || 'professional contact'
+
+    const { samples: styleSamples, rejected: dbRejected } = await getStyleContext()
+    // Feedback on the incoming contact may be newer than the debounced DB save,
+    // so merge it in. This makes thumbs-down -> regenerate work immediately.
+    const localRejected = (contact.suggestionFeedback || [])
+      .filter(f => f.rating === 'down')
+      .slice(-2)
+      .map(f => (f.message.length > 300 ? f.message.slice(0, 300) + '...' : f.message))
+    const rejected = [...new Set([...localRejected, ...dbRejected])].slice(0, 4)
+
+    let styleBlock = styleSamples.length
+      ? `\n\nMY WRITING STYLE - real messages I have sent before. Anything you write for me must match this tone, formality, phrasing, and sign-off style. These examples show HOW I write, not WHAT is true: never copy factual claims from them (like "I've attached my resume") unless the current context supports it:\n${styleSamples.map((s, i) => `${i + 1}. "${s}"`).join('\n')}`
+      : ''
+    if (rejected.length) {
+      styleBlock += `\n\nMESSAGES I REJECTED - AI drafts I gave a thumbs down. Do not repeat their style, structure, or phrasing. Write something noticeably different:\n${rejected.map((s, i) => `${i + 1}. "${s}"`).join('\n')}`
+    }
+
     const who = `Contact: ${contact.name}
 Title/Company: ${[contact.jobTitle, contact.company].filter(Boolean).join(' at ') || 'Unknown'}
-Relationship: ${relDesc}`
+Relationship: ${relDesc}${styleBlock}`
 
     let prompt = ''
 
@@ -230,6 +284,7 @@ ${context.roleApplying ? `- Role I am targeting: ${context.roleApplying}` : ''}
 
 WHY I am reaching out (this is the most important field — the note MUST reference this):
 "${context.context || 'not provided'}"
+${styleBlock}
 
 STRICT RULES — violating any of these is a failure:
 1. Under 300 characters — hard limit, count every character before finishing
@@ -243,13 +298,42 @@ STRICT RULES — violating any of these is a failure:
 Return JSON only (no markdown):
 {"note":"[write the actual note here — real words, no placeholders]"}`
 
+    } else if (type === 'follow-up-triage') {
+      prompt = `${who}
+
+Today's date: ${new Date().toDateString()}
+Days since my last message (no reply received): ${context.daysSince ?? 'unknown'}
+Messages already sent without any reply: ${context.unansweredCount}
+
+Full conversation history (dates in brackets):
+---
+${context.conversationHistory}
+---
+
+A follow-up is now due for this contact. Decide honestly: is it worth sending one more follow-up, or should I stop and close this contact? Use the dates in the history — do not assume anything was sent today.
+
+Decision rules:
+- If 2 or more messages have already gone unanswered, close it.
+- If their last reply was negative or brushing me off, close it.
+- If the conversation showed genuine interest, or this is a recruiter with a relevant open role, one more well-crafted follow-up is worth it.
+- A follow-up must add value or a new angle — never just "bumping this" or "checking in".
+
+Return JSON only:
+{"decision":"follow_up" or "close","message":"[exact follow-up message ready to send, or empty string if closing]","reason":"[1-2 sentence honest explanation of the decision]","timing":"[when to send it, e.g. Send this morning]"}`
+
     } else if (type === 'coach-chat') {
       const prevExchange = (context.chatHistory || []).slice(0, -1)
         .map(m => `${m.role === 'user' ? 'You' : 'Coach'}: ${m.content}`)
         .join('\n\n')
       const latestMsg = (context.chatHistory || []).at(-1)?.content || ''
+      const daysSinceContact = contact.lastContactDate
+        ? Math.floor((Date.now() - new Date(contact.lastContactDate).getTime()) / 86400000)
+        : null
 
       prompt = `You are coaching someone on their job search networking. Be direct and give specific, actionable advice — like a blunt friend who knows hiring.
+
+TODAY'S DATE: ${new Date().toDateString()}
+${daysSinceContact !== null ? `DAYS SINCE LAST LOGGED MESSAGE WITH THIS CONTACT: ${daysSinceContact}` : ''}
 
 WHO THEY ARE NETWORKING WITH:
 - Name: ${contact.name}
@@ -260,11 +344,13 @@ ${contact.company ? `- Company: ${contact.company}` : ''}
 
 FULL CONVERSATION THREAD BETWEEN USER AND ${contact.name}:
 ${context.conversationHistory || 'No messages yet — fresh contact with no history.'}
+${styleBlock}
 
 ${prevExchange ? `COACHING CONVERSATION SO FAR:\n${prevExchange}\n` : ''}
 USER ASKS: "${latestMsg}"
 
 RESPONSE RULES:
+0. The conversation thread above includes dates in [brackets]. USE THEM. Never assume a message was sent today — check its date against today's date before giving timing advice.
 1. Give a direct, specific answer — no "it depends" without also giving your actual recommendation
 2. If they ask "is this going well?" — actually read the messages above and give your real honest read
 3. If they need a message written — write the exact message, no [brackets], no "something like this"
@@ -272,10 +358,12 @@ RESPONSE RULES:
 5. Reference the actual content of their conversation when relevant — show you read it
 6. DO NOT start with "Great question!", "Absolutely!", "Of course!", or any affirmation filler
 7. Under 200 words unless the question genuinely needs more
-8. End with one concrete next step or recommendation`
+8. End with one concrete next step or recommendation
+9. Never use em dashes or en dashes in your reply or in any message you draft. Use a regular hyphen or comma instead.
+10. Any message you draft for the user must match the tone, formality, and sign-off style of MY WRITING STYLE examples above, and be professionally formatted: greeting, short paragraphs, natural closing. Never write [Your Name] or any bracketed placeholder. Use the exact sign-off the user uses in their examples.`
 
       const message = await callGeminiPlainText(prompt)
-      return res.json({ success: true, data: { message: message.trim() } })
+      return res.json({ success: true, data: { message: stripEmDashes(message.trim()) } })
 
     } else if (type === 'first-message') {
       prompt = `Write the first outreach message to a new contact.
@@ -288,6 +376,7 @@ ${contact.company ? `- Company: ${contact.company}` : ''}
 
 WHY I WANT TO REACH OUT (use this — do not write a generic message):
 "${context.context}"
+${styleBlock}
 
 RULES:
 1. Under 150 words
@@ -302,7 +391,7 @@ Return JSON only:
     }
 
     const raw = await callGemini(prompt)
-    const parsed = extractJSON(raw)
+    const parsed = stripEmDashes(extractJSON(raw))
 
     if (type === 'note-generator' && parsed.note) {
       parsed.charCount = parsed.note.length

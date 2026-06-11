@@ -13,6 +13,11 @@
 secrets.json
 config.secret.js
 
+# ── Personal / Claude Code ─────────────────────────────────────────────────
+# Local AI assistant config and context — personal, not for the repo
+CLAUDE.md
+dev-preview.cmd
+
 # ── User Data ─────────────────────────────────────────────────────────────
 # Contains your personal contact list — never commit this
 data/

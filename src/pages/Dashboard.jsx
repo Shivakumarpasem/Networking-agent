@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
@@ -9,12 +10,116 @@ const REL_LABELS = {
   other: 'Other',
 }
 
+// Card shown for each contact whose follow-up is due, with the AI-drafted message
+function FollowUpCard({ contact }) {
+  const { addMessage, updateContact, addSuggestionFeedback, regenerateFollowUp } = useApp()
+  const navigate = useNavigate()
+  const [copied, setCopied] = useState(false)
+  const [rated, setRated] = useState(null)
+  const [draft, setDraft] = useState('')
+  const fu = contact.followUp
+
+  // Sync the editable draft whenever a (re)generated message arrives
+  useEffect(() => {
+    setDraft(fu?.message || '')
+    if (fu?.message) setRated(null)
+  }, [fu?.message])
+
+  const handleMarkSent = () => {
+    addMessage(contact.id, { type: 'sent', content: draft.trim() })
+  }
+
+  const handleClose = () => {
+    updateContact(contact.id, { status: 'Closed', followUp: null })
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(draft)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleThumbsUp = () => {
+    addSuggestionFeedback(contact.id, { rating: 'up', message: fu.message, source: 'follow-up-triage' })
+    setRated('up')
+  }
+
+  const handleThumbsDown = () => {
+    addSuggestionFeedback(contact.id, { rating: 'down', message: fu.message, source: 'follow-up-triage' })
+    setRated('down')
+    regenerateFollowUp(contact.id) // redraft, avoiding the rejected style
+  }
+
+  return (
+    <div className="followup-card">
+      <div className="followup-card-header">
+        <div>
+          <span className="followup-card-name" onClick={() => navigate(`/contacts/${contact.id}`)}>
+            {contact.name}
+          </span>
+          <span className="contact-sub" style={{ marginLeft: 8 }}>
+            {[contact.jobTitle, contact.company].filter(Boolean).join(' at ')}
+          </span>
+        </div>
+        {fu?.timing && <span className="ai-timing">⏰ {fu.timing}</span>}
+      </div>
+
+      {fu ? (
+        <>
+          <textarea
+            className="followup-draft"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            spellCheck
+          />
+          {fu.reason && <div className="ai-advice">💡 {fu.reason}</div>}
+          <div className="followup-card-actions">
+            <button className="btn btn-primary btn-sm" onClick={handleMarkSent} disabled={!draft.trim()}>
+              ✓ Mark Sent
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleCopy}>
+              {copied ? '✓ Copied' : 'Copy'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/contacts/${contact.id}`)}>
+              Open Chat
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={handleClose}>Close Contact</button>
+            <span className="thumb-group">
+              <button
+                className={`thumb-btn${rated === 'up' ? ' active' : ''}`}
+                title="Good draft - remember this style"
+                onClick={handleThumbsUp}
+                disabled={rated !== null}
+              >👍</button>
+              <button
+                className="thumb-btn"
+                title="Bad draft - redraft and avoid this style"
+                onClick={handleThumbsDown}
+                disabled={rated !== null}
+              >👎</button>
+              {rated === 'up' && <span className="thumb-ack">Noted</span>}
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="followup-card-loading">
+          <div className="ai-spinner" style={{ width: 14, height: 14 }} />
+          {rated === 'down'
+            ? 'Redrafting with your feedback...'
+            : 'AI is deciding whether one more message is worth it...'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { sortedContacts } = useApp()
   const navigate = useNavigate()
 
   const total = sortedContacts.length
-  const followUpDue = sortedContacts.filter(c => c.status === 'Follow Up Due').length
+  const dueContacts = sortedContacts.filter(c => c.status === 'Follow Up Due')
+  const followUpDue = dueContacts.length
   const active = sortedContacts.filter(c => !['Closed', 'New'].includes(c.status)).length
   const awaitingReply = sortedContacts.filter(c => c.status === 'Awaiting Reply').length
 
@@ -52,6 +157,13 @@ export default function Dashboard() {
             <div className="stat-value">{awaitingReply}</div>
           </div>
         </div>
+
+        {dueContacts.length > 0 && (
+          <div className="followup-section">
+            <h3 className="followup-section-title">⚡ Follow-ups ready to send</h3>
+            {dueContacts.map(c => <FollowUpCard key={c.id} contact={c} />)}
+          </div>
+        )}
 
         <div className="card">
           {sortedContacts.length === 0 ? (

@@ -51,5 +51,8 @@ export const generateNote = (contact, context) =>
 export const coachChat = (contact, conversationHistory, chatHistory) =>
   post('coach-chat', contact, { conversationHistory, chatHistory })
 
+export const followUpTriage = (contact, conversationHistory, daysSince, unansweredCount) =>
+  post('follow-up-triage', contact, { conversationHistory, daysSince, unansweredCount })
+
 export const firstMessage = (contact, context) =>
   post('first-message', contact, { context })

@@ -205,6 +205,50 @@ body {
 .stat-card.urgent .stat-value { color: var(--danger); }
 .stat-card.active .stat-value { color: var(--accent); }
 
+/* ---- Dashboard Follow-up Cards ---- */
+.followup-section { margin-bottom: 20px; }
+.followup-section-title {
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+  margin-bottom: 10px;
+}
+.followup-card {
+  background: var(--bg-card); border: 1px solid #fde68a; border-left: 3px solid #d97706;
+  border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 10px;
+}
+.followup-card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; margin-bottom: 10px;
+}
+.followup-card-name {
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+  cursor: pointer;
+}
+.followup-card-name:hover { text-decoration: underline; }
+.followup-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.followup-card-loading {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-secondary); padding: 4px 0;
+}
+.followup-draft {
+  width: 100%; min-height: 110px; resize: vertical;
+  background: white; border: 1px solid #bbf7d0; border-radius: var(--r-md);
+  padding: 10px 13px; font-size: 13.5px; color: var(--text-primary);
+  line-height: 1.6; font-family: inherit; margin-bottom: 8px;
+}
+.followup-draft:focus { outline: none; border-color: var(--accent); }
+
+/* ---- Suggestion Feedback (thumbs) ---- */
+.thumb-group { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.thumb-btn {
+  background: none; border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 3px 7px; font-size: 13px; cursor: pointer; line-height: 1;
+  transition: all 0.12s;
+}
+.thumb-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.thumb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.thumb-btn.active { background: #dcfce7; border-color: #86efac; opacity: 1; }
+.thumb-ack { font-size: 11.5px; color: #16a34a; font-weight: 600; }
+
 /* ---- Contacts Table ---- */
 .contacts-table { width: 100%; border-collapse: collapse; }
 .contacts-table th {

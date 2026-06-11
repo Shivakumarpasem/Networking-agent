@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext.jsx'
 import StatusBadge from './StatusBadge.jsx'
 import { coachChat, firstMessage as aiFirstMessage } from '../services/ai.js'
+import { formatHistory } from '../utils/messages.js'
 
 const REL_LABELS = {
   recruiter: 'Recruiter',
@@ -22,40 +23,41 @@ const STARTERS = [
   'What is the best timing here?',
 ]
 
-function formatHistory(messages, contactName) {
-  return messages
-    .filter(m => ['sent', 'received', 'history'].includes(m.type))
-    .map(m => {
-      if (m.type === 'sent') return `You: ${m.content}`
-      if (m.type === 'received') return `${contactName}: ${m.content}`
-      if (m.type === 'history') return `[Prior conversation]\n${m.content}`
-      return ''
-    })
-    .filter(Boolean)
-    .join('\n\n')
-}
-
 // ── First Message Card (shown when contact has no messages yet) ─────────────
 function FirstMessageCard({ contact, onUse }) {
+  const { addSuggestionFeedback } = useApp()
   const [context, setContext] = useState('')
   const [result, setResult] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [rated, setRated] = useState(null)
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (contactOverride) => {
     if (!context.trim()) return
     setIsLoading(true)
     setError('')
     setResult(null)
+    setRated(null)
     try {
-      const data = await aiFirstMessage(contact, context.trim())
+      const data = await aiFirstMessage(contactOverride || contact, context.trim())
       setResult(data)
     } catch (err) {
       setError(err.message.includes('fetch') ? 'Cannot connect to AI server. Make sure it is running.' : err.message)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleThumbsDown = () => {
+    const rejection = { rating: 'down', message: result.message, source: 'first-message' }
+    addSuggestionFeedback(contact.id, rejection)
+    // Regenerate with the rejection included directly, since the saved
+    // feedback may not have reached the server yet (debounced save)
+    handleGenerate({
+      ...contact,
+      suggestionFeedback: [...(contact.suggestionFeedback || []), rejection],
+    })
   }
 
   return (
@@ -79,7 +81,7 @@ function FirstMessageCard({ contact, onUse }) {
       <button
         className="btn btn-ai"
         style={{ width: '100%', marginTop: 10 }}
-        onClick={handleGenerate}
+        onClick={() => handleGenerate()}
         disabled={!context.trim() || isLoading}
       >
         {isLoading ? (
@@ -111,6 +113,24 @@ function FirstMessageCard({ contact, onUse }) {
             <button className="btn btn-secondary btn-sm" onClick={() => setResult(null)}>
               Regenerate
             </button>
+            <span className="thumb-group">
+              <button
+                className={`thumb-btn${rated === 'up' ? ' active' : ''}`}
+                title="Good draft - remember this style"
+                disabled={rated !== null}
+                onClick={() => {
+                  addSuggestionFeedback(contact.id, { rating: 'up', message: result.message, source: 'first-message' })
+                  setRated('up')
+                }}
+              >👍</button>
+              <button
+                className="thumb-btn"
+                title="Bad draft - regenerate and avoid this style"
+                disabled={rated !== null}
+                onClick={handleThumbsDown}
+              >👎</button>
+              {rated === 'up' && <span className="thumb-ack">Noted</span>}
+            </span>
           </div>
         </div>
       )}
